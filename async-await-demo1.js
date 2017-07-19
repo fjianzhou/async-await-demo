@@ -4,23 +4,24 @@
 //3.await后面跟着一个promise对象；如果不是promise对象会立即执行
 
 
-var mysql =require('mysql');
+// async wait 与mysql.beginTransaction 混合使用案例
 
-var pool =mysql.createPool({
-    host:'127.0.0.1',
-    user:'root',
-    password:'12345611',
+var mysql = require('mysql');
+
+var pool = mysql.createPool({
+    host: '127.0.0.1',
+    user: 'root',
+    password: '123456',
 });
 
 
-
-var mySqlQuyer = async function(){
+var mySqlQuyer = async function () {
     var connection;
     var result;
-    try{
-        connection=await  new Promise((resolve,reject)=>{
-            pool.getConnection((err,connection)=>{
-                if(err){
+    try {
+        connection = await new Promise((resolve, reject) => {
+            pool.getConnection((err, connection) => {
+                if (err) {
 
                     reject(err)
                 }
@@ -28,21 +29,70 @@ var mySqlQuyer = async function(){
                     resolve(connection);
                 }
             })
-        });
-        result=await new Promise((resolve,reject)=>{
-            connection.query('select * from tem_test.t_test',function(err,result,fields){
-                if(err){
-                    reject(err)
-                }
-                else{
-                    resolve(result);
-                }
-            });
 
         });
-        console.log(result);
-    }catch (ex){
-        console.log(ex,connection);
+        if (connection) {
+            await new Promise((resolve, reject) => {
+                connection.beginTransaction(function (err) {
+                    if (err) {
+                        console.log("beginTransactionErr:" + err);
+                        reject("beginTransactionErr:" + err);
+                        return;
+                    }
+                    (async function () {
+                        try {
+                            // await new Promise((resolve, reject) => {
+                            //     connection.query('delete  from tem_test.t_test  where id =3', function (err, result) {
+                            //         if (err) {
+                            //             reject('selectSqlError' + err);
+                            //         }
+                            //         console.log('delete1',JSON.stringify(result));
+                            //         resolve(result);
+                            //     })
+                            // });
+                            var arr=[4,2222];
+                            for( var i=0; i<arr.length; i++ ){
+                                await new Promise((resolve, reject) => {
+                                    connection.query('delete  from tem_test.t_test where id ='+arr[i], function (err, reuslt) {
+                                        if (err) {
+                                            reject('deleteSqlError' + err);
+                                            return;
+                                        }
+                                        console.log('delete2',JSON.stringify(reuslt));
+                                        if(reuslt.affectedRows<1){
+                                            reject('没有要删数据！' + err);
+                                            return;
+                                        }
+                                        resolve(reuslt)
+                                    })
+                                });
+                            }
+                            connection.commit(function(err){
+                                if(err){
+                                    connection.rollback(function(){
+                                        console.log('commit错误事物回滚！')
+                                    })
+                                    reject('事物Error'+err);
+                                    return;
+                                }
+                                connection.release();
+                                console.log("数据删除成功！");
+
+                            });
+
+                        } catch (ex) {
+                            connection.rollback(function(){
+                                console.log('事物回滚！')
+                            });
+                            connection.release();
+                            reject("beginTransactionErrSql:" + ex);
+                        }
+                    })();
+                })
+            })
+        }
+    } catch (ex) {
+        console.log('xxx', ex);
     }
 
 };
